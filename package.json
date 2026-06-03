@@ -1,7 +1,7 @@
 {
   "name": "better-auth-drizzle-adapter",
-  "version": "1.0.1",
-  "description": "Drizzle ORM v1 adapter for Better Auth with relations v2 support. Vendored from better-auth/better-auth#9489.",
+  "version": "1.0.2",
+  "description": "Drizzle ORM v1 adapter for Better Auth with relations v2 support.",
   "type": "module",
   "license": "MIT",
   "repository": {

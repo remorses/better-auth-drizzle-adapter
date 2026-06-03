@@ -2,7 +2,7 @@
 
 Drizzle ORM v1 adapter for [Better Auth](https://better-auth.com) with **relations v2** support.
 
-Vendored from [better-auth/better-auth#9489](https://github.com/better-auth/better-auth/pull/9489) until the PR is merged and released officially. Once `@better-auth/drizzle-adapter` ships with relations v2 support, this package will be deprecated.
+Vendored from [better-auth/better-auth#9489](https://github.com/better-auth/better-auth/pull/9489).
 
 ## Install
 
