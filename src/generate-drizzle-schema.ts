@@ -11,7 +11,7 @@ import {
 	initGetFieldName,
 	initGetModelName,
 } from "@better-auth/core/db/adapter";
-import type { DrizzleAdapterConfig } from ".";
+import type { DrizzleAdapterConfig } from "./index.ts";
 
 interface SchemaGenerator {
 	<Options extends BetterAuthOptions>(opts: {

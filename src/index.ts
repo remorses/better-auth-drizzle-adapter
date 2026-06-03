@@ -27,7 +27,7 @@ import {
 	or,
 	sql,
 } from "drizzle-orm";
-import { generateDrizzleSchema } from "./generate-drizzle-schema";
+import { generateDrizzleSchema } from "./generate-drizzle-schema.ts";
 
 export interface DB {
 	[key: string]: any;
