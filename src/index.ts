@@ -696,6 +696,11 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					const res = await builder;
 					let count = 0;
 					if (res && "rowCount" in res) count = res.rowCount;
+					// postgres-js Result extends Array, so Array.isArray is true but
+					// res.length is 0 for DELETE/UPDATE without RETURNING. The actual
+					// affected-row count lives in res.count. Check .count first.
+					else if (res && "count" in res && typeof res.count === "number")
+						count = res.count;
 					else if (Array.isArray(res)) count = res.length;
 					else if (
 						res &&
