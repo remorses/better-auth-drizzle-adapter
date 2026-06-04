@@ -19,6 +19,8 @@ import {
 	gt,
 	gte,
 	inArray,
+	isNull,
+	isNotNull,
 	like,
 	lt,
 	lte,
@@ -27,6 +29,19 @@ import {
 	or,
 	sql,
 } from "drizzle-orm";
+
+// SQL: `column = NULL` is never true; must use `column IS NULL`.
+// Drizzle's eq() generates `= ?` with a null param which is wrong.
+function eqOrNull(column: any, value: any) {
+	if (value === null) return isNull(column);
+	return eq(column, value);
+}
+
+// Same for ne: `column != NULL` should be `column IS NOT NULL`.
+function neOrNotNull(column: any, value: any) {
+	if (value === null) return isNotNull(column);
+	return ne(column, value);
+}
 import { generateDrizzleSchema } from "./generate-drizzle-schema.ts";
 
 export interface DB {
@@ -216,7 +231,7 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					}
 
 					if (w.operator === "ne") {
-						return [ne(schemaModel[field], w.value)];
+						return [neOrNotNull(schemaModel[field], w.value)];
 					}
 
 					if (w.operator === "gt") {
@@ -227,7 +242,7 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 						return [gte(schemaModel[field], w.value)];
 					}
 
-					return [eq(schemaModel[field], w.value)];
+					return [eqOrNull(schemaModel[field], w.value)];
 				}
 				const andGroup = where.filter(
 					(w) => w.connector === "AND" || !w.connector,
@@ -275,9 +290,9 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 							return gte(schemaModel[field], w.value);
 						}
 						if (w.operator === "ne") {
-							return ne(schemaModel[field], w.value);
+							return neOrNotNull(schemaModel[field], w.value);
 						}
-						return eq(schemaModel[field], w.value);
+						return eqOrNull(schemaModel[field], w.value);
 					}),
 				);
 				const orClause = or(
@@ -321,9 +336,9 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 							return gte(schemaModel[field], w.value);
 						}
 						if (w.operator === "ne") {
-							return ne(schemaModel[field], w.value);
+							return neOrNotNull(schemaModel[field], w.value);
 						}
-						return eq(schemaModel[field], w.value);
+						return eqOrNull(schemaModel[field], w.value);
 					}),
 				);
 
@@ -375,13 +390,23 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					} else if (w.operator === "lte") {
 						columnObj.lte = w.value;
 					} else if (w.operator === "ne") {
-						columnObj.ne = w.value;
+						// null must use isNotNull, not ne (SQL: column != NULL is never true)
+						if (w.value === null) {
+							columnObj.isNotNull = true;
+						} else {
+							columnObj.ne = w.value;
+						}
 					} else if (w.operator === "gt") {
 						columnObj.gt = w.value;
 					} else if (w.operator === "gte") {
 						columnObj.gte = w.value;
 					} else {
-						columnObj.eq = w.value;
+						// null must use isNull, not eq (SQL: column = NULL is never true)
+						if (w.value === null) {
+							columnObj.isNull = true;
+						} else {
+							columnObj.eq = w.value;
+						}
 					}
 
 					return { field, columnObj };
