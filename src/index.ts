@@ -715,7 +715,131 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					}
 					return count;
 				},
-				async createSchema(props) {
+				async consumeOne({ model, where }) {
+				const schemaModel = getSchema(model);
+				const clause = convertWhereClause(where, model);
+				const idField = getFieldName({ model, field: "id" });
+				const idColumn = schemaModel[idField];
+
+				if (!idColumn) {
+					return null;
+				}
+
+				if (config.provider === "mysql") {
+					// MySQL has no DELETE ... RETURNING. Use SELECT FOR UPDATE in a transaction.
+					const claimFromTransaction = async (tx: DB) => {
+						const rows = await tx
+							.select()
+							.from(schemaModel)
+							.where(...clause)
+							.for("update")
+							.limit(1);
+						const target = rows[0];
+						if (!target) return null;
+						const targetId = target[idField] ?? (target as any).id;
+						if (targetId === undefined || targetId === null) return null;
+						await tx
+							.delete(schemaModel)
+							.where(eq(idColumn, targetId))
+							.execute();
+						return target as any;
+					};
+					return db.transaction
+						? db.transaction(claimFromTransaction)
+						: claimFromTransaction(db);
+				}
+
+				// Postgres / SQLite: DELETE ... RETURNING with subquery for single-row selection
+				const targetIds = db
+					.select({ id: idColumn })
+					.from(schemaModel)
+					.where(...clause)
+					.limit(1);
+				const deleted = await db
+					.delete(schemaModel)
+					.where(inArray(idColumn, targetIds))
+					.returning();
+				return (deleted[0] as any) ?? null;
+			},
+			async incrementOne({ model, where, increment, set }) {
+				const schemaModel = getSchema(model);
+				const clause = convertWhereClause(where, model);
+				const idField = getFieldName({ model, field: "id" });
+				const idColumn = schemaModel[idField];
+
+				// Build `field = field + delta` for each increment, plus absolute `set` assignments
+				const assignments: Record<string, unknown> = {};
+				for (const [field, delta] of Object.entries(increment)) {
+					const columnName = getFieldName({ model, field });
+					const column = schemaModel[columnName];
+					if (!column) {
+						throw new BetterAuthError(
+							`The field "${field}" does not exist in the schema for the model "${model}". Please update your schema.`,
+						);
+					}
+					assignments[columnName] = sql`${column} + ${delta}`;
+				}
+				if (set) {
+					for (const [field, value] of Object.entries(set)) {
+						const columnName = getFieldName({ model, field });
+						if (!schemaModel[columnName]) {
+							throw new BetterAuthError(
+								`The field "${field}" does not exist in the schema for the model "${model}". Please update your schema.`,
+							);
+						}
+						assignments[columnName] = value;
+					}
+				}
+
+				if (!idColumn) {
+					return null;
+				}
+
+				if (config.provider === "mysql") {
+					// MySQL: SELECT FOR UPDATE + UPDATE + read back
+					const mutateInTransaction = async (tx: DB) => {
+						const rows = await tx
+							.select()
+							.from(schemaModel)
+							.where(...clause)
+							.for("update")
+							.limit(1);
+						const target = rows[0];
+						if (!target) return null;
+						const targetId = target[idField] ?? (target as any).id;
+						if (targetId === undefined || targetId === null) return null;
+						await tx
+							.update(schemaModel)
+							.set(assignments)
+							.where(eq(idColumn, targetId))
+							.execute();
+						const updated = await tx
+							.select()
+							.from(schemaModel)
+							.where(eq(idColumn, targetId))
+							.limit(1)
+							.execute();
+						return (updated[0] as any) ?? null;
+					};
+					return db.transaction
+						? db.transaction(mutateInTransaction)
+						: mutateInTransaction(db);
+				}
+
+				// Postgres / SQLite: UPDATE ... RETURNING with subquery for single-row selection
+				const targetIds = db
+					.select({ id: idColumn })
+					.from(schemaModel)
+					.where(...clause)
+					.limit(1);
+				const updated = await db
+					.update(schemaModel)
+					.set(assignments)
+					.where(inArray(idColumn, targetIds))
+					.returning();
+				return (updated[0] as any) ?? null;
+			},
+			async createSchema(props) {
 					return await generateDrizzleSchema({
 						adapterConfig: config,
 						options: options,
