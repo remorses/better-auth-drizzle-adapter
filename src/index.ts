@@ -503,34 +503,35 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					const schemaModel = getSchema(model);
 					const clause = convertWhereClause(where, model);
 
-					if (options.experimental?.joins) {
+					// Gate on the presence of `join`, never on a config flag.
+					// Better Auth's adapter factory owns that decision and only
+					// forwards `join` once joins are enabled. The flag itself has
+					// moved (`experimental.joins` -> `advanced.database.joins` in
+					// better-auth#10359), so re-reading it here silently disabled
+					// native joins and fell back to N+1 queries.
+					if (join) {
 						if (!db.query || !db.query[model]) {
 							logger.error(
 								`[# Drizzle Adapter]: The model "${model}" was not found in the query object. Please update your Drizzle schema to include relations or re-generate using "npx @better-auth/cli@latest generate".`,
 							);
 							logger.info("Falling back to regular query");
 						} else {
-							let includes:
-								| Record<string, { limit: number } | boolean>
-								| undefined;
+							const includes: Record<string, { limit: number } | boolean> = {};
 
 							const pluralJoinResults: string[] = [];
-							if (join) {
-								includes = {};
-								const joinEntries = Object.entries(join);
-								for (const [model, joinAttr] of joinEntries) {
-									const limit =
-										joinAttr.limit ??
-										options.advanced?.database?.defaultFindManyLimit ??
-										100;
-									const isUnique = joinAttr.relation === "one-to-one";
-									const pluralSuffix = isUnique || config.usePlural ? "" : "s";
-									includes[`${model}${pluralSuffix}`] = isUnique
-										? true
-										: { limit };
-									if (!isUnique) {
-										pluralJoinResults.push(`${model}${pluralSuffix}`);
-									}
+							const joinEntries = Object.entries(join);
+							for (const [model, joinAttr] of joinEntries) {
+								const limit =
+									joinAttr.limit ??
+									options.advanced?.database?.defaultFindManyLimit ??
+									100;
+								const isUnique = joinAttr.relation === "one-to-one";
+								const pluralSuffix = isUnique || config.usePlural ? "" : "s";
+								includes[`${model}${pluralSuffix}`] = isUnique
+									? true
+									: { limit };
+								if (!isUnique) {
+									pluralJoinResults.push(`${model}${pluralSuffix}`);
 								}
 							}
 							const clause = convertNewWhereClause(where, model);
@@ -570,34 +571,33 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 					const clause = where ? convertWhereClause(where, model) : [];
 					const sortFn = sortBy?.direction === "desc" ? desc : asc;
 
-					if (options.experimental?.joins) {
+					// See findOne: `join` presence is the gate, not a config flag.
+					if (join) {
 						if (!db.query[model]) {
 							logger.error(
 								`[# Drizzle Adapter]: The model "${model}" was not found in the query object. Please update your Drizzle schema to include relations or re-generate using "npx @better-auth/cli@latest generate".`,
 							);
 							logger.info("Falling back to regular query");
 						} else {
-							let includes:
-								| Record<string, { limit: number; offset?: number } | boolean>
-								| undefined;
+							const includes: Record<
+								string,
+								{ limit: number; offset?: number } | boolean
+							> = {};
 
 							const pluralJoinResults: string[] = [];
-							if (join) {
-								includes = {};
-								const joinEntries = Object.entries(join);
-								for (const [model, joinAttr] of joinEntries) {
-									const isUnique = joinAttr.relation === "one-to-one";
-									const limit =
-										joinAttr.limit ??
-										options.advanced?.database?.defaultFindManyLimit ??
-										100;
-									const pluralSuffix = isUnique || config.usePlural ? "" : "s";
-									includes[`${model}${pluralSuffix}`] = isUnique
-										? true
-										: { limit };
-									if (!isUnique)
-										pluralJoinResults.push(`${model}${pluralSuffix}`);
-								}
+							const joinEntries = Object.entries(join);
+							for (const [model, joinAttr] of joinEntries) {
+								const isUnique = joinAttr.relation === "one-to-one";
+								const limit =
+									joinAttr.limit ??
+									options.advanced?.database?.defaultFindManyLimit ??
+									100;
+								const pluralSuffix = isUnique || config.usePlural ? "" : "s";
+								includes[`${model}${pluralSuffix}`] = isUnique
+									? true
+									: { limit };
+								if (!isUnique)
+									pluralJoinResults.push(`${model}${pluralSuffix}`);
 							}
 							let orderBy: Record<string, "asc" | "desc"> | undefined =
 								undefined;
