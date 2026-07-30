@@ -37,12 +37,36 @@ scopes: text('scopes', { mode: 'json' }).$type<string[]>()   // sqlite, mysql
 scopes: text('scopes').array()                               // pg
 ```
 
-> [!NOTE]
-> Before `1.2.0` `supportsJSON` was provider-based while `supportsArrays` was
-> always `true`, so `json` fields on SQLite and MySQL were stringified twice and
-> stored as `"{\"a\":1}"`. Better Auth read them back correctly, but
-> `json_extract` and direct drizzle queries saw a string. `1.2.0` matches
-> `@better-auth/drizzle-adapter/relations-v2` and stores them single-encoded.
+### Upgrading to 1.2.0
+
+`string[]` and `number[]` are **unchanged**: `supportsArrays` was already `true`,
+so the stored bytes and the values you read back are identical. Nothing to do.
+
+Only `json` fields changed. Before `1.2.0`, `supportsJSON` was provider-based, so
+on SQLite and MySQL Better Auth stringified them and the json-mode column
+stringified them again, storing `"{\"a\":1}"`. Better Auth read that back
+correctly, so the bug was invisible unless you queried the column directly.
+
+Rows written before `1.2.0` now decode to a **string** instead of an object. One
+idempotent statement unwraps them, skipping NULLs and rows that are already
+correct:
+
+```sql
+-- SQLite
+UPDATE oauth_client
+SET metadata = json_extract(metadata, '$')
+WHERE metadata IS NOT NULL AND json_type(metadata) = 'text';
+
+-- MySQL
+UPDATE oauth_client
+SET metadata = JSON_UNQUOTE(metadata)
+WHERE metadata IS NOT NULL AND JSON_TYPE(metadata) = 'STRING';
+```
+
+Better Auth core (`user`, `session`, `account`, `verification`) has **no** `json`
+fields, so a plugin-free install has nothing to migrate. Run the statement once
+per `json` column your plugins declare; with `oauthProvider` that is only
+`oauth_client.metadata`.
 
 ## Peer dependencies
 
