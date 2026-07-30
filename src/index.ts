@@ -859,15 +859,13 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 			usePlural: config.usePlural ?? false,
 			debugLogs: config.debugLogs ?? false,
 			supportsUUIDs: config.provider === "pg" ? true : false,
-			supportsJSON:
-				config.provider === "pg" // even though mysql also supports it, mysql requires to pass stringified json anyway.
-					? true
-					: false,
-			// For SQLite and MySQL, the generated schema uses `mode: "json"` columns
-			// which means Drizzle handles JSON serialization. So we don't need to
-			// pre-stringify arrays (which would cause double-stringification).
-			// For PostgreSQL, native arrays are used.
+			// Drizzle owns JSON serialization for `string[]`, `number[]` and
+			// `json` fields: the generated schema uses `mode: "json"` columns on
+			// SQLite/MySQL, and native arrays/jsonb on Postgres. Stringifying here
+			// as well would store double-encoded JSON that no other SQL client can
+			// read. Matches @better-auth/drizzle-adapter/relations-v2.
 			// See: https://github.com/better-auth/better-auth/issues/7440
+			supportsJSON: true,
 			supportsArrays: true,
 			transaction:
 				(config.transaction ?? false)

@@ -26,6 +26,24 @@ export const auth = betterAuth({
 })
 ```
 
+## Array and JSON columns
+
+Drizzle owns the encoding for every field Better Auth types as `string[]`,
+`number[]` or `json`, so those columns must be declared as json mode. This is
+what `createSchema` generates:
+
+```ts
+scopes: text('scopes', { mode: 'json' }).$type<string[]>()   // sqlite, mysql
+scopes: text('scopes').array()                               // pg
+```
+
+> [!NOTE]
+> Before `1.2.0` `supportsJSON` was provider-based while `supportsArrays` was
+> always `true`, so `json` fields on SQLite and MySQL were stringified twice and
+> stored as `"{\"a\":1}"`. Better Auth read them back correctly, but
+> `json_extract` and direct drizzle queries saw a string. `1.2.0` matches
+> `@better-auth/drizzle-adapter/relations-v2` and stores them single-encoded.
+
 ## Peer dependencies
 
 - `better-auth` >= 1.6.0
