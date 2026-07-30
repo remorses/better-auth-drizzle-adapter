@@ -42,7 +42,19 @@ function neOrNotNull(column: any, value: any) {
 	if (value === null) return isNotNull(column);
 	return ne(column, value);
 }
+
 import { generateDrizzleSchema } from "./generate-drizzle-schema.ts";
+
+// Better Auth types some fields as `string[]`, `number[]` or `json`. Whether
+// they need encoding depends on the drizzle column, not the database:
+// `text(name, { mode: 'json' })` encodes itself, plain `text(name)` does not.
+// The factory's supportsJSON/supportsArrays flags are one value per adapter, so
+// both are left `true` and each column is handled in the hooks further down.
+const JSON_TYPES = new Set(["string[]", "number[]", "json"]);
+
+// Drizzle reports a json dataType for every json-mode column, on every dialect.
+const encodesItself = (column: any) =>
+	String(column?.dataType).includes("json");
 
 export interface DB {
 	[key: string]: any;
@@ -851,6 +863,17 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 				options: config,
 			};
 		};
+	// Whether this adapter encodes the value, or drizzle and the driver do.
+	// Columns are addressed by fieldName, like everywhere else in this adapter;
+	// customTransformInput is handed the column name and customTransformOutput
+	// the field key, so neither `field` argument can be used on its own.
+	// Postgres is exempt: jsonb and native arrays take JS values directly.
+	const adapterEncodes = (model: string, field: string, attrs: any) => {
+		if (config.provider === "pg" || !JSON_TYPES.has(attrs.type)) return false;
+		const table = (config.schema || db._.fullSchema)?.[model];
+		return Boolean(table) && !encodesItself(table[attrs.fieldName || field]);
+	};
+
 	let adapterOptions: AdapterFactoryOptions | null = null;
 	adapterOptions = {
 		config: {
@@ -859,16 +882,23 @@ export const drizzleAdapter = (db: DB, config: DrizzleAdapterConfig) => {
 			usePlural: config.usePlural ?? false,
 			debugLogs: config.debugLogs ?? false,
 			supportsUUIDs: config.provider === "pg" ? true : false,
-			supportsJSON:
-				config.provider === "pg" // even though mysql also supports it, mysql requires to pass stringified json anyway.
-					? true
-					: false,
-			// For SQLite and MySQL, the generated schema uses `mode: "json"` columns
-			// which means Drizzle handles JSON serialization. So we don't need to
-			// pre-stringify arrays (which would cause double-stringification).
-			// For PostgreSQL, native arrays are used.
+			// Both true so the factory leaves these values alone and the hooks
+			// below can encode per column.
 			// See: https://github.com/better-auth/better-auth/issues/7440
+			supportsJSON: true,
 			supportsArrays: true,
+			customTransformInput({ data, field, fieldAttributes, model }) {
+				if (typeof data !== "object" || data === null) return data;
+				return adapterEncodes(model, field, fieldAttributes)
+					? JSON.stringify(data)
+					: data;
+			},
+			customTransformOutput({ data, field, fieldAttributes, model }) {
+				if (typeof data !== "string") return data;
+				return adapterEncodes(model, field, fieldAttributes)
+					? JSON.parse(data)
+					: data;
+			},
 			transaction:
 				(config.transaction ?? false)
 					? (cb) =>
